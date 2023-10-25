@@ -1,0 +1,9 @@
+pypdf
+langchain
+accelerate
+torch
+bitsandbytes
+transformers
+sentence_transformers
+faiss_cpu
+cryptography>=3.1

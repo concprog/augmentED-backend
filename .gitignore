@@ -1,0 +1,5 @@
+chatbot/data
+chatbot/models
+chatbot/vectorstore/db_faiss
+ngrok
+test.db
