@@ -1,17 +1,17 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+import aiofiles
 import ujson
 import os
-
 
 from app import auth, models, schemas, security, functions
 from app.db import get_db
 from app.models import User
-from ai.prompts import generate_context
-from chatbot.model import generate_therapist_response_without_rag, generate_openai_response
+from chatbot.model import generate_response_with_rag, generate_openai_response
 
 
 router = APIRouter()
@@ -34,13 +34,6 @@ async def register(user_in: schemas.UserIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
     return db_user
-
-
-@router.get("/questions/", response_model=schemas.Screen_Test)
-async def register(test_id: int):
-    questions = functions.get_questions(test_id)
-    return ujson.load(questions)
-
 
 
 # @router.post("/responses/", response_model=schemas.User_Response)
@@ -78,17 +71,25 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+@app.post("/uploadbook/")
+async def create_upload_file(file: UploadFile | None = None, subject: str):
+    if not file:
+        return {"message": "No upload file sent"}
+    else:
+        book_content = await file.read()
+        # TODO add code to save it in sql table
+        return {"filename": file.filename}
+
+
 @router.post("/conversation/")
 async def read_conversation(
     query: str,
     current_user: schemas.UserInDB = Depends(auth.get_current_user),
     db: Session = Depends(get_db),
 ):
+    # TODO Add subject/model checking and redirection
     db_user = db.query(User).get(current_user.id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    context = generate_context(db_user)
-
-    response = generate_therapist_response_without_rag(query)
-
+    response = generate_response_with_rag(query)
     return generate_openai_response(response)

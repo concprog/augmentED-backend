@@ -6,8 +6,6 @@ from enum import Enum
 class UserBase(BaseModel):
     email: str
     username: str
-    age: Optional[int] = None
-    gender: str
 
 
 class UserIn(UserBase):
@@ -34,9 +32,8 @@ class Token(BaseModel):
     token_type: str
 
 
-class Screen_Test(BaseModel):
-    questions: dict
-
-
-class Test_Response(BaseModel):
-    responses: dict
+class Book(BaseModel):
+    # TODO Check for errors and clean up this dog💩
+    id: int
+    subject: str
+    document: Optional[bytes] = None
