@@ -120,7 +120,7 @@ def generate_openai_response(message):
 if __name__ == "__main__":
     llm = load_llm()
     embeddings = HuggingFaceEmbedding(EMBEDDING_MODEL)
-    g_service_ctx = ServiceContext(llm=llm, embed_model=embeddings)
+    g_service_ctx = ServiceContext.from_defaults(llm=llm, embed_model=embeddings)
     set_global_service_context(g_service_ctx)
     vsi = index.PersistentDocStoreFaiss().load_or_create_default()
     print(vsi.as_query_engine().query("I feel overwhelmed by life. How can I fix this?"))
