@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Generator, List, Set, Dict, Optional, Tuple, Union
 from os.path import sep as PathSep
 
-from llama_index import ServiceContext, Prompt
+from llama_index import Prompt, ServiceContext, set_global_service_context
 from llama_index.embeddings import HuggingFaceEmbedding
 from llama_index.llms import LlamaCPP
 from llama_index.llms.llama_utils import (
@@ -10,6 +10,7 @@ from llama_index.llms.llama_utils import (
     completion_to_prompt,
 )
 
+import index
 
 DATA_PATH = "data/"
 DB_FAISS_PATH = "chatbot/vectorstore/db_faiss"
@@ -36,8 +37,8 @@ instruct_prompt_template = """Below is an instruction that describes a task, pai
 
 """
 # TODO Do prompt engineering to fix the instruction and other stuff
-chatbot_instruction = "" 
-instruct_prompt = Prompt(instruct_prompt_template.format(instruction=chatbot_instruction))
+chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer marks are deducted, hence answer carefully and leave the answer blank and caveat when you are not sure of your solution.\nUse the following notes to anwer the question: {context_str}" 
+instruct_prompt = Prompt(instruct_prompt_template.format(instruction=chatbot_instruction, input="{input}"))
 
 
 def set_custom_prompt(
@@ -54,12 +55,11 @@ def set_custom_prompt(
 def load_llm():
     # Load the locally downloaded model here
     llm = LlamaCPP(
-        model=MODEL_PATH,
-        model_type="llama",
-        max_new_tokens=4096,
-        temperature=0.5,
+        model_path=MODEL_PATH,
+        max_new_tokens=3900,
+        temperature=0.25,
         generate_kwargs={},
-        model_kwargs={"n_gpu_layers": 16},
+        model_kwargs={"n_gpu_layers": 18},
         messages_to_prompt=messages_to_prompt,
         completion_to_prompt=completion_to_prompt,
         verbose=True,
@@ -97,32 +97,13 @@ class chat_history:
         return conversation
 
 
-def instruct_qa_engine(prompt_instruction, prompt_input):
-    base_ctx = ServiceContext(embed_model=embeddings, llm=llm)
-    return base_engine
+
 
 
 # Globals
 
-embeddings = HuggingFaceEmbedding(
-    model_name=EMBEDDING_MODEL,
-)
 
-psych_db = FAISS.load_local(DB_FAISS_PATH, embeddings)
-llm = load_llm()
 
-chat_history = chat_history()
-
-rag_qa_prompt = set_custom_prompt(
-    custom_prompt_template=instruct_prompt_template.format(
-        **{
-            "instruction": therapist_prompt_instruction,
-            "input": therapist_prompt_input,
-        }
-    )
-)
-
-def generate_response_with_rag(query, subject)
 def generate_openai_response(message):
     choices = []
 
@@ -137,4 +118,9 @@ def generate_openai_response(message):
 
 
 if __name__ == "__main__":
-    pass
+    llm = load_llm()
+    embeddings = HuggingFaceEmbedding(EMBEDDING_MODEL)
+    g_service_ctx = ServiceContext(llm=llm, embed_model=embeddings)
+    set_global_service_context(g_service_ctx)
+    vsi = index.PersistentDocStoreFaiss().load_or_create_default()
+    print(vsi.as_query_engine().query("I feel overwhelmed by life. How can I fix this?"))

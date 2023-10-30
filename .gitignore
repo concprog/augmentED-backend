@@ -3,3 +3,5 @@ chatbot/models
 chatbot/vectorstore/db_faiss
 ngrok
 test.db
+aenv
+.vscode
