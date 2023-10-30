@@ -1,12 +1,23 @@
-# Personal Fitness ChatBot (Version 2)
+# AugmentED: AI Augmented Learning Library - Backend
 
 ## Description
+WIP - Nothing is finished yet  
 
-This version of the Personal Fitness ChatBot is an advanced AI chatbot. It uses OpenAI's Language Models to simulate conversation and provide personalized fitness advice to users. Each response is tailored to the user's unique profile, which includes their age and fitness level.
+AI:
+- Vector index querying almost working - for pdfs
+- custom retrieval and response synthesis next
+- ReAct later.. probably  
+
+Backend: 
+- User auth is done
+- working on conversations
+- need to make file uploading work and save in sql
+- SQL schema for everything
+
 
 ## Setup
 
-This project uses FastAPI, SQLAlchemy and OpenAI, and it requires Python 3.7+.
+This project uses FastAPI, SQLAlchemy, llama_index and llama_cpp_python, and it requires Python 3.10+.
 
 To start the application, navigate to the project folder and execute the command:
 
@@ -14,17 +25,21 @@ python main.py
 
 The application will be available at `http://localhost:5555`.
 
-## Key Features
+## Key Features(TBD)
 
 - User registration and authentication system with OAuth2.
-- Secure conversation endpoint that generates a unique, AI-generated response based on the user's profile and question.
+- Secure conversation endpoint that generates a unique, AI-generated response based on the  question.
+- Uploading books to the library (stored in SQL)
+- Making custom notes for topics using AI
+- Same for PYQa as well
 - SQLite database for user data persistence.
-- Integration with OpenAI's Language Models to generate responses.
 
 ## Environment Variables
 
-To run this project, you will need to add the following environment variables:
+To run this project, you will need to do the following:  
+  
+  1. Clone the project repo or download zip and extract it   
+   `git clone https://github.com/nusaturn/augmentED-backend`
+  2. Create a venv: `python -m venv ml-env`
+  3. Install requirements: `pip install -r requirements.txt`
 
-- `OPENAI_API_KEY`: Your OpenAI API key to use OpenAI's Language Models.
-
-Please use a `.env` file for setting these environment variables. The `.env` file is ignored by git to ensure sensitive items are not accidentally published.

@@ -38,7 +38,7 @@ instruct_prompt_template = """Below is an instruction that describes a task, pai
 """
 # TODO Do prompt engineering to fix the instruction and other stuff
 chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer marks are deducted, hence answer carefully and leave the answer blank and caveat when you are not sure of your solution.\nUse the following notes to anwer the question: {context_str}" 
-instruct_prompt = Prompt(instruct_prompt_template.format(instruction=chatbot_instruction, input="{input}"))
+chatbot_prompt = Prompt(instruct_prompt_template.format(instruction=chatbot_instruction, input="{query_str}"))
 
 
 def set_custom_prompt(
@@ -101,8 +101,17 @@ class chat_history:
 
 
 # Globals
+llm = load_llm()
+embeddings = HuggingFaceEmbedding(EMBEDDING_MODEL)
+g_service_ctx = ServiceContext.from_defaults(llm=llm, embed_model=embeddings)
+set_global_service_context(g_service_ctx)
+vsi = index.PersistentDocStoreFaiss().load_or_create_default()
 
-
+def generate_response_with_rag(query: str) -> str:
+    qa_engine = vsi.as_query_engine()
+    ans = qa_engine.query(chatbot_prompt.format(context_str = "{context_str}", query_str = query))
+    return ans
+    
 
 def generate_openai_response(message):
     choices = []

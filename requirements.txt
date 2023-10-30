@@ -1,13 +1,15 @@
 python-jose
 pypdf
 langchain
-torch
+llama_index
 bitsandbytes
 transformers
 sentence_transformers
 faiss_cpu
+rank_bm25
 cryptography>=3.1
-ctransformers
+llama_cpp_python
 tiktoken
 isort
 SQLAlchemy
+fastapi
