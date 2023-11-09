@@ -34,7 +34,7 @@ The application will be available at `http://localhost:5555`.
 - Same for PYQa as well
 - SQLite database for user data persistence.
 
-## Environment Variables
+## Running the project:
 
 To run this project, you will need to do the following:  
   

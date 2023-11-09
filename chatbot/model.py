@@ -57,6 +57,7 @@ def load_llm():
     llm = LlamaCPP(
         model_path=MODEL_PATH,
         max_new_tokens=3900,
+      
         temperature=0.25,
         generate_kwargs={},
         model_kwargs={"n_gpu_layers": 18},
@@ -66,6 +67,8 @@ def load_llm():
     )
     return llm
 
+def messages_to_prompt(role, prompt):
+    pass
 
 @dataclass
 class chat_history:

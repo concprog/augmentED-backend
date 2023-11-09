@@ -11,12 +11,11 @@ from llama_index.vector_stores.faiss import FaissVectorStore
 import faiss
 import os
 
+from config import *
+
 DATA_PATH = "chatbot/data/"
 DB_FAISS_PATH = "chatbot/vectorstore/db_faiss"
 
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-EMBEDDING_DIM = 384
-EMBEDDING_MODEL_ARGS = model_kwargs = {"device": "cuda"}
 
 documents = SimpleDirectoryReader(DATA_PATH).load_data()
 
@@ -33,9 +32,9 @@ class PersistentDocStoreFaiss:
         self.faiss_index = faiss.IndexFlatL2(embedding_dim)
         self.vector_store = FaissVectorStore(faiss_index=self.faiss_index)
         self.storage_ctx = StorageContext.from_defaults(
-            vector_store=self.vector_store, persist_dir=self.storage_path
+            vector_store=self.vector_store, 
         )
-        self.index = VectorStoreIndex(storage_context=self.storage_ctx)
+        self.index = None
 
     def load(self):
         self.vector_store = FaissVectorStore.from_persist_dir(self.storage_path)
@@ -45,8 +44,7 @@ class PersistentDocStoreFaiss:
         self.index = load_index_from_storage(storage_context=self.storage_ctx)
         return self.index
 
-    def create(self, doc_loader=SimpleDirectoryReader, data_path=DATA_PATH, save=True):
-        documents = doc_loader(data_path).load_data()
+    def create(self, documents, data_path=DATA_PATH, save=True):
         text_splitter = SentenceSplitter(
             chunk_size=1024,
             # separator=" ",
@@ -68,21 +66,26 @@ class PersistentDocStoreFaiss:
             src_doc = documents[doc_idxs[idx]]
             node.metadata = src_doc.metadata
             nodes.append(node)
-        
+
         for node in nodes:
             node_embedding = self.embedding.get_text_embedding(
                 node.get_content(metadata_mode="all")
             )
             node.embedding = node_embedding
-        
+
         self.vector_store.add(nodes)
         self.index = VectorStoreIndex(storage_context=self.storage_ctx)
         if save:
-            self.index.storage_context.persist()
+            self.index.storage_context.persist(persist_dir=self.storage_path)
         return self.index
 
     def load_or_create_default(self):
         if os.path.exists(self.storage_path):
             return self.load()
         else:
-            return self.create()
+            return self.create(documents=SimpleDirectoryReader(DATA_PATH).load_data())
+
+
+if __name__ == "__main__":
+    documents = SimpleDirectoryReader(DATA_PATH).load_data()
+    store = PersistentDocStoreFaiss().create(documents=documents)
