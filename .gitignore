@@ -4,4 +4,6 @@ chatbot/vectorstore/db_faiss
 ngrok
 test.db
 aenv
+data/*
+__pycache__
 .vscode

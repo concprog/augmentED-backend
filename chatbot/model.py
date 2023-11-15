@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Generator, List, Set, Dict, Optional, Tuple, Union
+from typing import Generator, List, Set, Dict, Optional, Tuple, Union, Any
 from os.path import sep as PathSep
 
 from llama_index import Prompt, ServiceContext, set_global_service_context
@@ -12,30 +12,8 @@ from llama_index.llms.llama_utils import (
 
 import index
 
-DATA_PATH = "data/"
-DB_FAISS_PATH = "chatbot/vectorstore/db_faiss"
+from common import *
 
-MODEL_PATH = "chatbot/models/nous-hermes-llama-2-7b.Q5_K_M.gguf"
-MODEL_NAME = MODEL_PATH.partition(".")[0].partition(PathSep)[-1]
-MODEL_KWARGS = {"max_new_tokens": 1024, "temperature": 0.8}
-
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-EMBEDDING_MODEL_ARGS = model_kwargs = {"device": "cuda"}
-
-SIMILARITY_SEARCH_KWARGS = {"k": 3}
-SIMILARITY_SEARCH_THRESHOLD = 0.33
-
-instruct_prompt_template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. 
-
-### Instruction:
-{instruction}
-
-### Input: 
-{input}
-
-### Response:
-
-"""
 # TODO Do prompt engineering to fix the instruction and other stuff
 chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer marks are deducted, hence answer carefully and leave the answer blank and caveat when you are not sure of your solution.\nUse the following notes to anwer the question: {context_str}" 
 chatbot_prompt = Prompt(instruct_prompt_template.format(instruction=chatbot_instruction, input="{query_str}"))
@@ -66,9 +44,6 @@ def load_llm():
         verbose=True,
     )
     return llm
-
-def messages_to_prompt(role, prompt):
-    pass
 
 @dataclass
 class chat_history:
@@ -113,7 +88,7 @@ vsi = index.PersistentDocStoreFaiss().load_or_create_default()
 def generate_response_with_rag(query: str) -> str:
     qa_engine = vsi.as_query_engine()
     ans = qa_engine.query(chatbot_prompt.format(context_str = "{context_str}", query_str = query))
-    return ans
+    return str(ans)
     
 
 def generate_openai_response(message):

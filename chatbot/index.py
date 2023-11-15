@@ -11,7 +11,7 @@ from llama_index.vector_stores.faiss import FaissVectorStore
 import faiss
 import os
 
-from config import *
+from common import *
 
 DATA_PATH = "chatbot/data/"
 DB_FAISS_PATH = "chatbot/vectorstore/db_faiss"
@@ -44,7 +44,7 @@ class PersistentDocStoreFaiss:
         self.index = load_index_from_storage(storage_context=self.storage_ctx)
         return self.index
 
-    def create(self, documents, data_path=DATA_PATH, save=True):
+    def create(self, documents, save=True):
         text_splitter = SentenceSplitter(
             chunk_size=1024,
             # separator=" ",
@@ -74,7 +74,8 @@ class PersistentDocStoreFaiss:
             node.embedding = node_embedding
 
         self.vector_store.add(nodes)
-        self.index = VectorStoreIndex(storage_context=self.storage_ctx)
+        storage_ctx = StorageContext.from_defaults(vector_store=self.vector_store)
+        self.index = VectorStoreIndex(storage_context=storage_ctx)
         if save:
             self.index.storage_context.persist(persist_dir=self.storage_path)
         return self.index
