@@ -1,7 +1,9 @@
 from llama_index import (
+    ServiceContext,
     VectorStoreIndex,
     StorageContext,
     load_index_from_storage,
+    set_global_service_context,
 )
 from llama_index import SimpleDirectoryReader
 from llama_index.text_splitter import SentenceSplitter
@@ -13,12 +15,6 @@ import os
 
 from common import *
 
-DATA_PATH = "chatbot/data/"
-DB_FAISS_PATH = "chatbot/vectorstore/db_faiss"
-
-
-documents = SimpleDirectoryReader(DATA_PATH).load_data()
-
 
 class PersistentDocStoreFaiss:
     def __init__(
@@ -26,67 +22,51 @@ class PersistentDocStoreFaiss:
         embedding_model_url=EMBEDDING_MODEL,
         embedding_dim=384,
         storage_path=DB_FAISS_PATH,
+        data_path: str = DATA_PATH,
+        service_context=ServiceContext.from_defaults(llm=None),
     ) -> None:
         self.storage_path = storage_path
+        self.data_path = data_path
+
         self.embedding = HuggingFaceEmbedding(model_name=embedding_model_url)
         self.faiss_index = faiss.IndexFlatL2(embedding_dim)
         self.vector_store = FaissVectorStore(faiss_index=self.faiss_index)
         self.storage_ctx = StorageContext.from_defaults(
-            vector_store=self.vector_store, 
+            vector_store=self.vector_store,
         )
-        self.index = None
+        self.service_ctx = service_context
 
-    def load(self):
-        self.vector_store = FaissVectorStore.from_persist_dir(self.storage_path)
+    def load(self, path):
+        self.vector_store = FaissVectorStore.from_persist_dir(path)
         self.storage_ctx = StorageContext.from_defaults(
-            vector_store=self.vector_store, persist_dir=self.storage_path
+            vector_store=self.vector_store, persist_dir=path
         )
-        self.index = load_index_from_storage(storage_context=self.storage_ctx)
+        self.index = load_index_from_storage(storage_context=self.storage_ctx, service_context=self.service_ctx)
         return self.index
 
-    def create(self, documents, save=True):
-        text_splitter = SentenceSplitter(
-            chunk_size=1024,
-            # separator=" ",
-        )
-        text_chunks = []
-
-        # maintain relationship with source doc index, to help inject doc metadata in (3)
-        doc_idxs = []
-        for doc_idx, doc in enumerate(documents):
-            cur_text_chunks = text_splitter.split_text(doc.text)
-            text_chunks.extend(cur_text_chunks)
-            doc_idxs.extend([doc_idx] * len(cur_text_chunks))
-
-        nodes = []
-        for idx, text_chunk in enumerate(text_chunks):
-            node = TextNode(
-                text=text_chunk,
-            )
-            src_doc = documents[doc_idxs[idx]]
-            node.metadata = src_doc.metadata
-            nodes.append(node)
-
-        for node in nodes:
-            node_embedding = self.embedding.get_text_embedding(
-                node.get_content(metadata_mode="all")
-            )
-            node.embedding = node_embedding
-
-        self.vector_store.add(nodes)
+    def create_from_documents(self, documents, save=True):
         storage_ctx = StorageContext.from_defaults(vector_store=self.vector_store)
-        self.index = VectorStoreIndex(storage_context=storage_ctx)
+        self.index = VectorStoreIndex.from_documents(
+            documents=documents,
+            storage_context=storage_ctx,
+            service_context=ServiceContext.from_defaults(
+                llm=None, embed_model=self.embedding
+            ),
+        )
         if save:
             self.index.storage_context.persist(persist_dir=self.storage_path)
         return self.index
 
-    def load_or_create_default(self):
+    def load_or_create(self):
         if os.path.exists(self.storage_path):
-            return self.load()
+            return self.load(self.storage_path)
         else:
-            return self.create(documents=SimpleDirectoryReader(DATA_PATH).load_data())
+            return self.create_from_documents(
+                documents=SimpleDirectoryReader(self.data_path).load_data()
+            )
 
 
 if __name__ == "__main__":
-    documents = SimpleDirectoryReader(DATA_PATH).load_data()
-    store = PersistentDocStoreFaiss().create(documents=documents)
+    print(os.getcwd())
+    documents = SimpleDirectoryReader(get_subject_data_path("psychology")).load_data()
+    store = PersistentDocStoreFaiss().create_from_documents(documents=documents)

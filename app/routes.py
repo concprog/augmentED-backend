@@ -11,7 +11,7 @@ import os
 from app import auth, models, schemas, security, functions
 from app.db import get_db
 from app.models import User
-from chatbot.model import generate_response_with_rag, generate_openai_response
+from chatbot.functions import generate_responses, generate_openai_from_response
 
 
 router = APIRouter()
@@ -91,5 +91,5 @@ async def read_conversation(
     db_user = db.query(User).get(current_user.id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    response = generate_response_with_rag(query)
-    return generate_openai_response(response)
+    response = generate_responses(query=query)
+    return generate_openai_from_response(response)

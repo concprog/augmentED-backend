@@ -9,34 +9,29 @@ from llama_index.llms.llama_utils import (
     messages_to_prompt,
     completion_to_prompt,
 )
+from llama_index.tools.query_engine import QueryEngineTool
+from llama_index.agent import ReActAgent
+
 
 import index
 
 from common import *
 
 # TODO Do prompt engineering to fix the instruction and other stuff
-chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer marks are deducted, hence answer carefully and leave the answer blank and caveat when you are not sure of your solution.\nUse the following notes to anwer the question: {context_str}" 
-chatbot_prompt = Prompt(instruct_prompt_template.format(instruction=chatbot_instruction, input="{query_str}"))
-
-
-def set_custom_prompt(
-    custom_prompt_template, input_variables=["query_str", "context_str"]
-):
-    """
-    Prompt template for QA retrieval for each vectorstore
-    """
-    prompt = Prompt(custom_prompt_template)
-    return prompt
-
+chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer marks are deducted, hence answer carefully and leave the answer blank and caveat when you are not sure of your solution.\nUse the following notes to anwer the question: {context_str}"
+chatbot_prompt = Prompt(
+    instruct_prompt_template.format(
+        instruction=chatbot_instruction, input="{query_str}"
+    )
+)
 
 # Loading the model
-def load_llm():
+def load_llm(model_path):
     # Load the locally downloaded model here
     llm = LlamaCPP(
-        model_path=MODEL_PATH,
-        max_new_tokens=3900,
-      
-        temperature=0.25,
+        model_path=model_path,
+        max_new_tokens=2048,
+        temperature=0.7,
         generate_kwargs={},
         model_kwargs={"n_gpu_layers": 18},
         messages_to_prompt=messages_to_prompt,
@@ -45,69 +40,35 @@ def load_llm():
     )
     return llm
 
-@dataclass
-class chat_history:
-    history: List[Dict[str, str]] = field(default_factory=list)
-    roles: Set[str] = field(default_factory=set)
-
-    def append_to_chat_history(self, message, role):
-        if not role in self.roles:
-            self.roles.add(role)
-        self.history.append({role: message})
-
-    def get_all_messages_by_role(self, role):
-        messages = []
-        if role in self.roles:
-            messages = [chat[role] for chat in self.history]
-        return messages
-
-    def get_last_n_conversations(self, n=10):
-        messages = self.history[:n]
-        conversation = "\n".join([": ".join(*chat.items()) for chat in messages])
-        return conversation
-
-    def get_all_conversations(self):
-        conversation = "\n".join([": ".join(*chat.items()) for chat in self.history])
-        return conversation
-
-    def get_as_tuples(self):
-        conversation = [chat.items() for chat in self.history]
-        return conversation
-
-
-
-
-
-# Globals
-llm = load_llm()
-embeddings = HuggingFaceEmbedding(EMBEDDING_MODEL)
-g_service_ctx = ServiceContext.from_defaults(llm=llm, embed_model=embeddings)
-set_global_service_context(g_service_ctx)
-vsi = index.PersistentDocStoreFaiss().load_or_create_default()
-
-def generate_response_with_rag(query: str) -> str:
-    qa_engine = vsi.as_query_engine()
-    ans = qa_engine.query(chatbot_prompt.format(context_str = "{context_str}", query_str = query))
-    return str(ans)
-    
-
-def generate_openai_response(message):
-    choices = []
-
-    choices.append(
-        {
-            "role": "assistant",
-            "content": message,
-        }
+def subject_vector_tool(query_engine, subject):
+    vector_tool = QueryEngineTool.from_defaults(
+    query_engine=query_engine,
+    description=f"Useful for retrieving specific context related to the {subject}",
     )
-    data = {"choices": choices}
-    return data
+    return vector_tool
+
+
+def generate_response_with_rag(vsi,query: str) -> str:
+    qa_engine = vsi.as_chat_engine(chat_mode="react")
+    ans = qa_engine.chat(
+        chatbot_prompt.format(context_str="{context_str}", query_str=query)
+    )
+    return str(ans)
+
+def response_agent(llm, tools, debug=False):
+    agent = ReActAgent.from_tools(tools=tools, llm=llm, verbose=debug)
+    return agent
+
+
 
 
 if __name__ == "__main__":
-    llm = load_llm()
+    llm = load_llm("chatbot/models/zephyr-7b-beta.Q4_K_M.gguf")
     embeddings = HuggingFaceEmbedding(EMBEDDING_MODEL)
+
     g_service_ctx = ServiceContext.from_defaults(llm=llm, embed_model=embeddings)
     set_global_service_context(g_service_ctx)
-    vsi = index.PersistentDocStoreFaiss().load_or_create_default()
-    print(vsi.as_query_engine().query("I feel overwhelmed by life. How can I fix this?"))
+
+    vsi = index.PersistentDocStoreFaiss(service_context=g_service_ctx).load(DB_FAISS_PATH)
+    print(vsi.as_query_engine().query("How should I give therapy to a depressed friend with an anxiety disorder?"))
+   
