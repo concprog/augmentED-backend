@@ -26,7 +26,7 @@ chatbot_prompt = Prompt(
 )
 
 # Loading the model
-def load_llm(model_path):
+def load_llm(model_path=MODEL_PATH):
     # Load the locally downloaded model here
     llm = LlamaCPP(
         model_path=model_path,
@@ -61,14 +61,14 @@ def response_agent(llm, tools, debug=False):
 
 
 
+llm = load_llm(model_path=MODEL_PATH)
+embeddings = HuggingFaceEmbedding(EMBEDDING_MODEL)
+g_service_ctx = ServiceContext.from_defaults(llm=llm, embed_model=embeddings)
+set_global_service_context(g_service_ctx)
 
 if __name__ == "__main__":
-    llm = load_llm("chatbot/models/zephyr-7b-beta.Q4_K_M.gguf")
-    embeddings = HuggingFaceEmbedding(EMBEDDING_MODEL)
 
-    g_service_ctx = ServiceContext.from_defaults(llm=llm, embed_model=embeddings)
-    set_global_service_context(g_service_ctx)
 
-    vsi = index.PersistentDocStoreFaiss(service_context=g_service_ctx).load(DB_FAISS_PATH)
+    vsi = index.PersistentDocStoreFaiss(service_context=g_service_ctx, storage_path=DB_FAISS_PATH).load_from_storage()
     print(vsi.as_query_engine().query("How should I give therapy to a depressed friend with an anxiety disorder?"))
    

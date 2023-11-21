@@ -1,5 +1,5 @@
 import index
-from chatbot import model
+import model
 from common import *
 
 def create_subjectwise_indexes():
@@ -23,9 +23,13 @@ indexes = create_subjectwise_indexes()
 tools = create_subjectwise_tools(indexes)
 agent = create_chat_agent(llm = model.load_llm(MODEL_PATH), tools=tools, from_dict=True)
 
+# Accessible fn.s
+
+# Responses
 def generate_responses(query):
     response = agent.chat(model.chatbot_prompt.format(query_str=query))
     return str(response)
+
 
 def generate_openai_from_response(response):
     choices = []
@@ -38,3 +42,8 @@ def generate_openai_from_response(response):
     )
     data = {"choices": choices}
     return data
+
+# Search
+
+if __name__ == "__main__":
+    generate_responses("How do I help my friend who is suffering from severe anxiety and depression?")

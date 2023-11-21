@@ -21,7 +21,7 @@ class PersistentDocStoreFaiss:
         self,
         embedding_model_url=EMBEDDING_MODEL,
         embedding_dim=384,
-        storage_path=DB_FAISS_PATH,
+        storage_path = DB_FAISS_PATH,
         data_path: str = DATA_PATH,
         service_context=ServiceContext.from_defaults(llm=None),
     ) -> None:
@@ -36,10 +36,10 @@ class PersistentDocStoreFaiss:
         )
         self.service_ctx = service_context
 
-    def load(self, path):
-        self.vector_store = FaissVectorStore.from_persist_dir(path)
+    def load_from_storage(self):
+        self.vector_store = FaissVectorStore.from_persist_dir(self.data_path)
         self.storage_ctx = StorageContext.from_defaults(
-            vector_store=self.vector_store, persist_dir=path
+            vector_store=self.vector_store, persist_dir=self.data_path
         )
         self.index = load_index_from_storage(storage_context=self.storage_ctx, service_context=self.service_ctx)
         return self.index
@@ -49,9 +49,7 @@ class PersistentDocStoreFaiss:
         self.index = VectorStoreIndex.from_documents(
             documents=documents,
             storage_context=storage_ctx,
-            service_context=ServiceContext.from_defaults(
-                llm=None, embed_model=self.embedding
-            ),
+            service_context=self.service_ctx
         )
         if save:
             self.index.storage_context.persist(persist_dir=self.storage_path)
@@ -59,7 +57,7 @@ class PersistentDocStoreFaiss:
 
     def load_or_create(self):
         if os.path.exists(self.storage_path):
-            return self.load(self.storage_path)
+            return self.load_from_storage()
         else:
             return self.create_from_documents(
                 documents=SimpleDirectoryReader(self.data_path).load_data()
