@@ -3,15 +3,14 @@ from llama_index import (
     VectorStoreIndex,
     StorageContext,
     load_index_from_storage,
-    set_global_service_context,
 )
 from llama_index import SimpleDirectoryReader
-from llama_index.text_splitter import SentenceSplitter
-from llama_index.schema import TextNode
 from llama_index.embeddings import HuggingFaceEmbedding
 from llama_index.vector_stores.faiss import FaissVectorStore
 import faiss
 import os
+
+from llama_index.vector_stores.types import DEFAULT_PERSIST_FNAME
 
 from common import *
 
@@ -19,29 +18,35 @@ from common import *
 class PersistentDocStoreFaiss:
     def __init__(
         self,
-        embedding_model_url=EMBEDDING_MODEL,
-        embedding_dim=384,
-        storage_path = DB_FAISS_PATH,
+        embedding_model=HuggingFaceEmbedding(model_name=EMBEDDING_MODEL),
+        embedding_dim=EMBEDDING_DIM,
+        storage_path=DB_FAISS_PATH,
         data_path: str = DATA_PATH,
-        service_context=ServiceContext.from_defaults(llm=None),
+        service_context=None,
     ) -> None:
         self.storage_path = storage_path
         self.data_path = data_path
 
-        self.embedding = HuggingFaceEmbedding(model_name=embedding_model_url)
+        self.embedding = embedding_model
         self.faiss_index = faiss.IndexFlatL2(embedding_dim)
         self.vector_store = FaissVectorStore(faiss_index=self.faiss_index)
         self.storage_ctx = StorageContext.from_defaults(
             vector_store=self.vector_store,
         )
-        self.service_ctx = service_context
+        self.service_ctx = (
+            service_context
+            if service_context is not None
+            else ServiceContext.from_defaults(llm=None, embed_model=self.embedding)
+        )
 
     def load_from_storage(self):
-        self.vector_store = FaissVectorStore.from_persist_dir(self.data_path)
-        self.storage_ctx = StorageContext.from_defaults(
-            vector_store=self.vector_store, persist_dir=self.data_path
+        self.vector_store = FaissVectorStore.from_persist_dir(persist_dir=self.storage_path)
+        storage_ctx = StorageContext.from_defaults(
+            vector_store=self.vector_store, persist_dir=self.storage_path
         )
-        self.index = load_index_from_storage(storage_context=self.storage_ctx, service_context=self.service_ctx)
+        self.index = load_index_from_storage(
+            storage_context=storage_ctx, service_context=self.service_ctx, show_progress=True
+        )
         return self.index
 
     def create_from_documents(self, documents, save=True):
@@ -49,22 +54,28 @@ class PersistentDocStoreFaiss:
         self.index = VectorStoreIndex.from_documents(
             documents=documents,
             storage_context=storage_ctx,
-            service_context=self.service_ctx
+            service_context=self.service_ctx,
+
+            show_progress=True
         )
         if save:
             self.index.storage_context.persist(persist_dir=self.storage_path)
+            # self.vector_store.persist(persist_path=os.path.join(self.storage_path, DEFAULT_PERSIST_FNAME))
         return self.index
 
     def load_or_create(self):
-        if os.path.exists(self.storage_path):
+        if os.path.isdir(self.storage_path) and os.listdir(self.storage_path) != []:
             return self.load_from_storage()
         else:
             return self.create_from_documents(
-                documents=SimpleDirectoryReader(self.data_path).load_data()
+                documents=SimpleDirectoryReader(
+                    self.data_path, filename_as_id=True
+                ).load_data()
             )
 
 
 if __name__ == "__main__":
     print(os.getcwd())
-    documents = SimpleDirectoryReader(get_subject_data_path("psychology")).load_data()
-    store = PersistentDocStoreFaiss().create_from_documents(documents=documents)
+    docs = SimpleDirectoryReader(get_subject_data_path("psychology"), filename_as_id=True).load_data()
+    store = PersistentDocStoreFaiss(data_path=get_subject_data_path("psychology")).load_or_create()
+    

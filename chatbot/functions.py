@@ -5,7 +5,7 @@ from common import *
 def create_subjectwise_indexes():
     indexes = {}
     for subject in subjects.keys():
-        indexes[subject] = index.PersistentDocStoreFaiss(data_path=get_subject_data_path(subject),storage_path=r"vectorstores/{}".format(subjects[subject])).load_or_create()
+        indexes[subject] = index.PersistentDocStoreFaiss(data_path=get_subject_data_path(subject),storage_path=r"vectorstores/{}".format(subjects[subject]), service_context=model.g_service_ctx).load_or_create()
 
     return indexes
 
@@ -44,6 +44,9 @@ def generate_openai_from_response(response):
     return data
 
 # Search
+
+def search_catalogue(query, top_k=10):
+    return []
 
 if __name__ == "__main__":
     generate_responses("How do I help my friend who is suffering from severe anxiety and depression?")
