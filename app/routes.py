@@ -36,19 +36,6 @@ async def register(user_in: schemas.UserIn, db: Session = Depends(get_db)):
     return db_user
 
 
-# @router.post("/responses/", response_model=schemas.User_Response)
-# async def register(user_in: schemas.UserIn, db: Session = Depends(get_db)):
-#     db_user = auth.get_user(db, username=user_in.username)
-#     if not db_user:
-#         raise HTTPException(status_code=400, detail="Username not registered")
-
-#     db_user = models.Screen_Tests(
-#         user_id = user_in.dict()["id"],
-#     )
-#     db.add(db_user)
-#     db.commit()
-#     db.refresh(db_user)
-#     return db_user
 
 
 @router.post("/token", response_model=schemas.Token)
@@ -71,7 +58,7 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.post("/uploadbook/")
+@router.post("/uploadbook/")
 async def create_upload_file(file: UploadFile | None = None, subject: str):
     if not file:
         return {"message": "No upload file sent"}
@@ -84,12 +71,20 @@ async def create_upload_file(file: UploadFile | None = None, subject: str):
 @router.post("/conversation/")
 async def read_conversation(
     query: str,
-    current_user: schemas.UserInDB = Depends(auth.get_current_user),
+   
     db: Session = Depends(get_db),
 ):
     # TODO Add subject/model checking and redirection
-    db_user = db.query(User).get(current_user.id)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
+
+    response = generate_responses(query=query)
+    return generate_openai_from_response(response)
+
+router.post("/passage_similarity_search/")
+async def read_conversation(
+    query: str,
+    db: Session = Depends(get_db),
+):
+    # TODO Add subject/model checking and redirection
+
     response = generate_responses(query=query)
     return generate_openai_from_response(response)

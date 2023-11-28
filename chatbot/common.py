@@ -1,6 +1,6 @@
 from os.path import sep as PathSep
 import os
-from types import NoneType
+from typing import Optional
 
 EMBEDDING_MODEL = "thenlper/gte-small"
 EMBEDDING_DIM = 384
@@ -9,7 +9,7 @@ EMBEDDING_MODEL_ARGS = model_kwargs = {"device": "cuda"}
 DATA_PATH = os.getcwd() + PathSep + "data"
 DB_FAISS_PATH = "chatbot/vectorstore/db_faiss"
 
-MODEL_PATH = os.getcwd() + PathSep + "chatbot/models/nous-hermes-llama-2-7b.Q5_K_M.gguf"
+MODEL_PATH = os.getcwd() + PathSep + "chatbot/models/zephyr-7b-beta.Q4_K_M.gguf"
 MODEL_NAME = MODEL_PATH.partition(".")[0].partition(PathSep)[-1]
 # MODEL_KWARGS = {"max_new_tokens": 1024, "temperature": 0.8}
 
@@ -35,7 +35,7 @@ def get_subjects_from_dirs(data_path=DATA_PATH):
     return subjects
 
 
-def get_subject_data_path(subject_str: str) -> str:
+def get_subject_data_path(subject_str: str) -> Optional[str]:
     if subject_str in subjects.keys():
         subpath = DATA_PATH + PathSep + subjects[subject_str]
         if os.path.exists(subpath):

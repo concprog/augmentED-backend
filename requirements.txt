@@ -1,12 +1,13 @@
 python-jose
 pypdf
 langchain
-llama_index
+llama_index==0.9.7
 bitsandbytes
 transformers
 sentence_transformers
 faiss_cpu
 rank_bm25
+milvus
 cryptography>=3.1
 llama_cpp_python
 tiktoken
