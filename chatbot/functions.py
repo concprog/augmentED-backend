@@ -37,7 +37,6 @@ def create_chat_agent(llm=model.load_llm(MODEL_PATH), tools=[], from_dict=False)
 
 indexes = create_subjectwise_indexes()
 tools = create_subjectwise_tools(indexes)
-tools.append()
 agent = create_chat_agent(llm=model.load_llm(MODEL_PATH), tools=tools, from_dict=True)
 
 # Accessible fn.s
