@@ -46,7 +46,7 @@ def load_llm(model_path=MODEL_PATH, colab=False):
 
     llm = LlamaCPP(
         model_path=model_path,
-        max_new_tokens=2048,
+        max_new_tokens=3900,
         temperature=0.7,
         generate_kwargs={},
         model_kwargs={"n_gpu_layers": 18 if not colab else 64},

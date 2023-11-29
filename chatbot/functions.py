@@ -26,7 +26,7 @@ def create_subjectwise_indexes():
 def create_subjectwise_tools(indexes):
     tools = {}
     for subject in indexes:
-        tools[subject] = model.subject_vector_tool(indexes[subject], subject)
+        tools[subject] = model.subject_vector_tool(indexes[subject].as_query_engine(), subject)
     return tools
 
 
@@ -70,7 +70,6 @@ def generate_openai_from_response(response):
 
 
 def search_catalogue(query, top_k=10):
-    # results = model.vector_search()
     pass
 
 

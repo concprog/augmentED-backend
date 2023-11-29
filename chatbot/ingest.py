@@ -1,3 +1,4 @@
+from pathlib import WindowsPath
 from re import sub
 from llama_index import (
     ServiceContext,
@@ -6,10 +7,15 @@ from llama_index import (
     load_index_from_storage,
     service_context,
 )
+import llama_index
 from llama_index.embeddings import HuggingFaceEmbedding
-from llama_index.schema import TextNode
+from llama_index.embeddings.base import similarity
+from llama_index.schema import TextNode, MetadataMode
 from llama_index.retrievers import BaseRetriever
-from llama_index.query_engine import ToolRetrieverRouterQueryEngine, RetrieverQueryEngine
+from llama_index.query_engine import (
+    ToolRetrieverRouterQueryEngine,
+    RetrieverQueryEngine,
+)
 from llama_index.vector_stores import MilvusVectorStore
 from llama_index.readers import SimpleDirectoryReader
 from llama_index.node_parser import SentenceWindowNodeParser, SentenceSplitter
@@ -32,9 +38,7 @@ import os
 from typing import List, Dict, Any, Optional
 
 
-from common import *
-
-default_server.start()
+from common import DATA_PATH, EMBEDDING_DIM, EMBEDDING_MODEL, subjects, PathSep, debug
 
 
 class AugmentedIngestPipeline:
@@ -43,85 +47,115 @@ class AugmentedIngestPipeline:
         self.service_ctx = service_context
         self.embed_model = self.service_ctx.embed_model
         self.vector_indexes = {}
-        self.metadata_fn = lambda x: {"title":x.replace("_", " ")}
+        self.metadata_fn = lambda x: {"title": x.replace("_", " ")}
+        self.node_parser = SentenceWindowNodeParser.from_defaults(
+            window_size=3,
+            window_metadata_key="window",
+            original_text_metadata_key="og_text",
+            include_metadata=True,
+        )
 
     def _load_data(self, path):
-
-
-        docs = SimpleDirectoryReader(
-            path, 
-            file_metadata=self.metadata_fn
-        ).load_data()
+        docs = SimpleDirectoryReader(path, file_metadata=self.metadata_fn).load_data()
 
         return docs
 
-
     def _make_nodes(self, docs):
-
-        text_parser = SentenceSplitter(chunk_size=512)
-
-        text_chunks = []
-        # maintain relationship with source doc index, to help inject doc metadata in (3)
-        doc_idxs = []
-
-        for doc_idx, doc in enumerate(docs):
-            cur_text_chunks = text_parser.split_text(doc.text)
-            text_chunks.extend(cur_text_chunks)
-            doc_idxs.extend([doc_idx] * len(cur_text_chunks))
-
-        
-        nodes = []
-        for idx, text_chunk in enumerate(text_chunks):
-            node = TextNode(
-                text=text_chunk,
-            )
-            src_doc = docs[doc_idxs[idx]]
-            node.metadata = src_doc.metadata
-            nodes.append(node)
-
+        nodes = self.node_parser.get_nodes_from_documents(docs, show_progress=debug)
         for node in nodes:
             node_embedding = self.embed_model.get_text_embedding(
-                node.get_content(metadata_mode="all")
+                node.get_content(metadata_mode=MetadataMode.ALL)
             )
             node.embedding = node_embedding
-        
+
         return nodes
 
-    def _insert_into_vectorstore(self, subject, nodes,create=True):
-        self.collection_name = 'augmentED'
+    def _insert_into_vectorstore(self, subject, nodes, create=True):
+        self.collection_name = f"augmentED_{subject}"
         self.vector_store = MilvusVectorStore(
-            uri=r"{host}:{port}".format(
-                host=default_server.server_address, port=default_server.listen_port
-            ),
+            dim=EMBEDDING_DIM,
+            host=default_server.server_address,
+            port=default_server.listen_port,
             collection_name=self.collection_name,
             overwrite=create,
         )
         storage_ctx = StorageContext.from_defaults(vector_store=self.vector_store)
-        self.vector_indexes[subject]=VectorStoreIndex(nodes=nodes, service_context=self.service_ctx, storage_context=storage_ctx)
-    
+        self.vector_indexes[subject] = VectorStoreIndex(
+            nodes=nodes,
+            service_context=self.service_ctx,
+            storage_context=storage_ctx,
+        )
+
     def run_pipeline(self):
+        self.one_giant_index_docs = []
         for subject in subjects:
-            path = self.data_dir+PathSep+subjects[subject]
+            path = self.data_dir + PathSep + subjects[subject]
             docs = self._load_data(path)
             nodes = self._make_nodes(docs)
             self._insert_into_vectorstore(subject, nodes)
+            self.one_giant_index_docs.extend(docs)
+
+        self.one_giant_index = VectorStoreIndex.from_documents(
+            self.one_giant_index_docs,
+            storage_context=StorageContext.from_defaults(
+                persist_dir=r"vectorstores/ogi"
+            ),
+            show_progress=True,
+        )
 
     def get_indices_as_tools(self):
         tools = []
         for subject in self.vector_indexes:
             vector_tool = QueryEngineTool.from_defaults(
-                query_engine=self.vector_indexes[subject],
-                description=f"Useful for retrieving specific context for anything related to the {subject}",
+                query_engine=self.vector_indexes[subject].as_query_engine(
+                    similarity_top_k=3,
+                    node_postprocessors=[
+                        MetadataReplacementPostProcessor(target_metadata_key="window")
+                    ],
+                ),
+                description=f"Useful for retrieving specific context for solving questions related to the {subject}",
             )
             tools.append(vector_tool)
         return tools
-            
 
-        
+    def get_subjects_as_query_engines(self) -> Dict:
+        self.query_engines = {}
+        for subject in subjects:
+            self.query_engines[subject] = self.vector_indexes[subject].as_query_engine(
+                        similarity_top_k=3,
+                        node_postprocessors=[
+                            MetadataReplacementPostProcessor(target_metadata_key="window")
+                        ],
+                    )
+        return self.query_engines
+
+    def search_ogi(
+        self,
+        query,
+        top_k=10,
+        replace_with_meta=True,
+        metadata_key="title",
+    ):
+        retr = self.one_giant_index.as_retriever(
+            similarity_top_k=top_k,
+        )
+        answers = retr.retrieve(query)
+        if replace_with_meta:
+            return list(map(lambda x: x.metadata[metadata_key], answers))
+
+def ingest_one_file(file_path):
+    
 
 
 if __name__ == "__main__":
+    default_server.start()
     print(os.getcwd())
-    docs = SimpleDirectoryReader(
-        get_subject_data_path("psychology"), filename_as_id=True
-    ).load_data()
+    pipe = AugmentedIngestPipeline(
+        DATA_PATH,
+        service_context=ServiceContext.from_defaults(
+            llm=None, embed_model=HuggingFaceEmbedding(EMBEDDING_MODEL)
+        ),
+    )
+    pipe.run_pipeline()
+    pipe.search_ogi("depr")
+    default_server.stop()

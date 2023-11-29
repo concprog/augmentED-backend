@@ -2,6 +2,8 @@ from os.path import sep as PathSep
 import os
 from typing import Optional
 
+debug = True
+
 EMBEDDING_MODEL = "thenlper/gte-small"
 EMBEDDING_DIM = 384
 EMBEDDING_MODEL_ARGS = model_kwargs = {"device": "cuda"}
