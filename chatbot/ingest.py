@@ -122,11 +122,11 @@ class AugmentedIngestPipeline:
         self.query_engines = {}
         for subject in subjects:
             self.query_engines[subject] = self.vector_indexes[subject].as_query_engine(
-                        similarity_top_k=3,
-                        node_postprocessors=[
-                            MetadataReplacementPostProcessor(target_metadata_key="window")
-                        ],
-                    )
+                similarity_top_k=3,
+                node_postprocessors=[
+                    MetadataReplacementPostProcessor(target_metadata_key="window")
+                ],
+            )
         return self.query_engines
 
     def search_ogi(
@@ -141,10 +141,22 @@ class AugmentedIngestPipeline:
         )
         answers = retr.retrieve(query)
         if replace_with_meta:
-            return list(map(lambda x: x.metadata[metadata_key], answers))
+            return list(set(map(lambda x: x.metadata[metadata_key], answers)))
+
+    
+
 
 def ingest_one_file(file_path):
-    
+    index = VectorStoreIndex.from_documents(
+        SimpleDirectoryReader(input_dir=file_path, filename_as_id=True).load_data(),
+        storage_context=StorageContext.from_defaults(
+            persist_dir=r"vectorstores/{0}".format(file_path.partition(".")[0])
+        ),
+        show_progress=True,
+    )
+    return index
+
+
 
 
 if __name__ == "__main__":

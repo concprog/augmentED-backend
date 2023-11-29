@@ -4,16 +4,18 @@ from os.path import sep as PathSep
 
 import llama_index
 from llama_index import (
+    SimpleDirectoryReader,
     Document,
     Prompt,
     ServiceContext,
+    StorageContext,
     VectorStoreIndex,
     set_global_service_context,
 )
-from llama_index.schema import Node, NodeWithScore
+from llama_index.schema import TextNode, NodeWithScore
 from llama_index.embeddings import HuggingFaceEmbedding
-from llama_index.retrievers import RecursiveRetriever
-from llama_index.llms import LlamaCPP, OpenAI
+
+from llama_index.llms import LlamaCPP
 from llama_index.llms.llama_utils import (
     messages_to_prompt,
     completion_to_prompt,
@@ -31,17 +33,15 @@ from common import *
 ###########
 # Prompts #
 ###########
-chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer marks are deducted, hence answer carefully and leave the answer blank and caveat when you are not sure of your solution.\nUse the following notes to anwer the question: {context_str}"
-chatbot_prompt = Prompt(
-    instruct_prompt_template.format(
-        instruction=chatbot_instruction, input="{query_str}"
-    )
-)
+chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer marks are deducted, hence answer carefully and leave the answer blank and caveat when you are not sure of your solution. \nQuestion: {query_str}"
+chatbot_prompt = Prompt(chatbot_instruction)
+
+
+
 
 
 # Loading the model
 def load_llm(model_path=MODEL_PATH, colab=False):
-
     # Uncomment the block below for using with local llm
 
     llm = LlamaCPP(
@@ -74,7 +74,7 @@ def response_agent(llm, tools, debug=False):
 
 
 # LLM task helpers
-def get_subject_from_query(agent, query, subjects = subjects):
+def get_subject_from_query(agent, query, subjects=subjects):
     fmted_subjects = ", ".join(list(subjects.keys()))
     generate_responses = lambda x: str(agent.chat(x))
     subject = generate_responses(
@@ -91,7 +91,6 @@ def get_subject_from_query(agent, query, subjects = subjects):
     return subject
 
 
-
 # Search (vector, bm25, ensemble)
 
 
@@ -99,6 +98,43 @@ def vector_search(query: str, vsi: VectorStoreIndex, n=10) -> List[NodeWithScore
     retr = vsi.as_retriever(similarity_top_k=n)
     docs = retr.retrieve(query)
     return docs
+
+
+# Personalized helper functions
+def create_subjectwise_indexes():
+    indexes = {}
+    for subject in subjects.keys():
+        # Placeholder vector store to be replaced by milvus lite
+        indexes[subject] = VectorStoreIndex.from_documents(
+            SimpleDirectoryReader(
+                input_dir=get_subject_data_path(subject), filename_as_id=True
+            ).load_data(),
+            storage_context=StorageContext.from_defaults(
+                persist_dir=r"vectorstores/{0}".format(subject)
+            ),
+            show_progress=True,
+        )
+
+    return indexes
+
+
+def create_subjectwise_tools(indexes):
+    tools = {}
+    for subject in indexes:
+        tools[subject] = subject_vector_tool(
+            indexes[subject].as_query_engine(), subject
+        )
+    return tools
+
+
+def create_chat_agent(llm=load_llm(MODEL_PATH), tools=[], from_dict=False):
+    tools = list(tools.values) if from_dict else tools
+    return response_agent(llm=llm, tools=tools)
+
+
+def chat_with_agent(agent: ReActAgent, query):
+    chat_response = agent.chat(chatbot_prompt.format(query_str=query))
+    return str(chat_response)
 
 
 llm = load_llm(model_path=MODEL_PATH)

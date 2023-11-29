@@ -67,6 +67,10 @@ async def create_upload_file(file: UploadFile | None = None, subject: str):
         # TODO add code to save it in sql table
         return {"filename": file.filename}
 
+# Psuedocode - Replace with working example
+@router.post("/getbook/")
+async def create_upload_file(filename: str):
+    return {"file": functions.serve_book(filename)}
 
 @router.post("/conversation/")
 async def read_conversation(

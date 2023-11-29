@@ -1,43 +1,22 @@
-from llama_index import VectorStoreIndex, SimpleDirectoryReader, ServiceContext, StorageContext, set_global_service_context
-from llama_index.tools import QueryEngineTool
-
+from llama_index import VectorStoreIndex, set_global_service_context
 import model
 from common import *
 
+from pydantic import BaseModel
+
 set_global_service_context(model.g_service_ctx)
-def create_subjectwise_indexes():
-    indexes = {}
-    for subject in subjects.keys():
-        # Placeholder vector store to be replaced by milvus lite
-        indexes[subject] = VectorStoreIndex.from_documents(
-            SimpleDirectoryReader(
-                input_dir=get_subject_data_path(subject),
-                filename_as_id=True
-            ).load_data(),
-            storage_context=StorageContext.from_defaults(
-                persist_dir=r"vectorstores/{0}".format(subject)
-            ),
-            show_progress=True,
-        )
-
-    return indexes
 
 
-def create_subjectwise_tools(indexes):
-    tools = {}
-    for subject in indexes:
-        tools[subject] = model.subject_vector_tool(indexes[subject].as_query_engine(), subject)
-    return tools
 
+class Document(BaseModel):
+    filepath: str
+    index: VectorStoreIndex
 
-def create_chat_agent(llm=model.load_llm(MODEL_PATH), tools=[], from_dict=False):
-    tools = list(tools.values) if from_dict else tools
-    return model.response_agent(llm=llm, tools=tools)
+document_cache = []
 
-
-indexes = create_subjectwise_indexes()
-tools = create_subjectwise_tools(indexes)
-agent = create_chat_agent(llm=model.load_llm(MODEL_PATH), tools=tools, from_dict=True)
+indexes = model.create_subjectwise_indexes()
+tools = model.create_subjectwise_tools(indexes)
+agent = model.create_chat_agent(llm=model.load_llm(MODEL_PATH), tools=tools, from_dict=True)
 
 # Accessible fn.s
 
@@ -48,9 +27,12 @@ def search_passages(passage, top_k=3):
 
 
 # Responses
-def generate_responses(query):
+def generate_generic_response(query):
     response = agent.chat(model.chatbot_prompt.format(query_str=query))
     return str(response)
+
+def set_document(file_path):
+
 
 
 def generate_openai_from_response(response):
