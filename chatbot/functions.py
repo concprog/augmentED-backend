@@ -1,4 +1,5 @@
 from llama_index import VectorStoreIndex, set_global_service_context
+from sqlalchemy import result_tuple
 
 import model
 from common import *
@@ -17,10 +18,8 @@ agent = model.create_chat_agent(llm=model.load_llm(MODEL_PATH), tools=tools, fro
 # Accessible fn.s
 
 def search_passages(passage, top_k=3):
-    subject_index = indexes[model.get_subject_from_query(agent, passage, subjects)]
-    similar_chunks = model.vector_search(passage, subject_index, top_k)
-    chunk_with_docid = [(chunk.get_content(), chunk.node_id)for chunk in similar_chunks]
-
+    return model.search_for_para(passage, top_k=top_k)
+    
 
 # Responses
 def generate_generic_response(query):
@@ -29,13 +28,14 @@ def generate_generic_response(query):
 
 def set_document_chat_engine(file_path):
     doc_chat_engine = model.pipeline.index_one_doc(file_path).as_chat_engine()
-    if len(document_chat_engine_cache) > 2:
+    if len(document_chat_engine_cache) > 1:
         document_chat_engine_cache.pop()
     document_chat_engine_cache.append(doc_chat_engine)
 
 def chat_with_document(query):
-    doc_chat_engine = chat_with_document[0]
-    return doc_chat_engine.
+    doc_chat_engine = document_chat_engine_cache[0]
+    resp =  doc_chat_engine.chat(query)
+    return str(resp)
 
 
 

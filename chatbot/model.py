@@ -47,7 +47,7 @@ def load_llm(model_path=MODEL_PATH, colab=False):
     llm = LlamaCPP(
         model_path=model_path,
         max_new_tokens=3900,
-        temperature=0.7,
+        temperature=0.5,
         generate_kwargs={},
         model_kwargs={"n_gpu_layers": 18 if not colab else 64},
         messages_to_prompt=messages_to_prompt,
@@ -92,12 +92,9 @@ def get_subject_from_query(agent, query, subjects=subjects):
 
 
 # Search (vector, bm25, ensemble)
-
-
-def vector_search(query: str, vsi: VectorStoreIndex, n=10) -> List[NodeWithScore]:
-    retr = vsi.as_retriever(similarity_top_k=n)
-    docs = retr.retrieve(query)
-    return docs
+def search_for_para(para: str, top_k: int):
+    answers = pipeline.search_one_giant_index(para, top_k=top_k, metadata_key="window")
+    return answers
 
 
 # Personalized helper functions
@@ -137,6 +134,7 @@ def chat_with_agent(agent: ReActAgent, query):
     return str(chat_response)
 
 
+
 llm = load_llm(model_path=MODEL_PATH)
 embeddings = HuggingFaceEmbedding(model_name=EMBEDDING_MODEL)
 
@@ -144,6 +142,8 @@ g_service_ctx = ServiceContext.from_defaults(
     llm=llm, embed_model=embeddings, chunk_size=512
 )
 
+pipeline = ingest.AugmentedIngestPipeline(data_dir_path=DATA_PATH, service_context=g_service_ctx)
+pipeline.run_pipeline()
 
 if __name__ == "__main__":
     pass

@@ -8,6 +8,7 @@ from llama_index import (
     global_service_context,
 )
 import llama_index
+from llama_index import query_engine
 from llama_index.embeddings import HuggingFaceEmbedding
 from llama_index.embeddings.base import similarity
 from llama_index.schema import TextNode, MetadataMode
@@ -42,7 +43,9 @@ from common import DATA_PATH, EMBEDDING_DIM, EMBEDDING_MODEL, subjects, PathSep,
 
 
 class AugmentedIngestPipeline:
-    def __init__(self, data_dir_path: str, service_context: ServiceContext, create=True) -> None:
+    def __init__(
+        self, data_dir_path: str, service_context: ServiceContext, create=True
+    ) -> None:
         self.data_dir = data_dir_path
         self.service_ctx = service_context
         self.embed_model = self.service_ctx.embed_model
@@ -63,15 +66,9 @@ class AugmentedIngestPipeline:
 
     def _make_nodes(self, docs):
         nodes = self.node_parser.get_nodes_from_documents(docs, show_progress=debug)
-        for node in nodes:
-            node_embedding = self.embed_model.get_text_embedding(
-                node.get_content(metadata_mode=MetadataMode.ALL)
-            )
-            node.embedding = node_embedding
-
         return nodes
 
-    def _insert_into_vectorstore(self, subject, nodes, create=True):
+    def _insert_into_vectorstore(self, subject, nodes, create=False):
         collection_name = f"augmentED_{subject}"
         self.vector_store = MilvusVectorStore(
             dim=EMBEDDING_DIM,
@@ -86,6 +83,15 @@ class AugmentedIngestPipeline:
             service_context=self.service_ctx,
             storage_context=storage_ctx,
         )
+
+    def _get_subject_query_engine(self, subject) -> Dict:
+        query_engine = self.vector_indexes[subject].as_query_engine(
+            similarity_top_k=3,
+            node_postprocessors=[
+                MetadataReplacementPostProcessor(target_metadata_key="window")
+            ],
+        )
+        return query_engine
 
     def run_pipeline(self):
         self.one_giant_index_nodes = []
@@ -114,17 +120,6 @@ class AugmentedIngestPipeline:
             tools.append(vector_tool)
         return tools
 
-    def get_subjects_as_query_engines(self) -> Dict:
-        self.query_engines = {}
-        for subject in subjects:
-            self.query_engines[subject] = self.vector_indexes[subject].as_query_engine(
-                similarity_top_k=3,
-                node_postprocessors=[
-                    MetadataReplacementPostProcessor(target_metadata_key="window")
-                ],
-            )
-        return self.query_engines
-
     def search_one_giant_index(
         self,
         query,
@@ -143,7 +138,7 @@ class AugmentedIngestPipeline:
                 map(lambda x: x.get_content(metadata_mode=MetadataMode.LLM), answers)
             )
 
-    def index_one_file(self, file_path: str):
+    def index_one_doc(self, file_path: str):
         doc = (
             SimpleDirectoryReader(
                 input_files=[file_path],
@@ -153,6 +148,7 @@ class AugmentedIngestPipeline:
         nodes = self._make_nodes(doc[0])
 
         self._insert_into_vectorstore("user_doc", nodes)
+
         return self.vector_indexes["user_doc"]
 
 
