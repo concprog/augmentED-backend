@@ -1,4 +1,5 @@
 from llama_index import VectorStoreIndex, set_global_service_context
+
 import model
 from common import *
 
@@ -7,12 +8,7 @@ from pydantic import BaseModel
 set_global_service_context(model.g_service_ctx)
 
 
-
-class Document(BaseModel):
-    filepath: str
-    index: VectorStoreIndex
-
-document_cache = []
+document_chat_engine_cache = []
 
 indexes = model.create_subjectwise_indexes()
 tools = model.create_subjectwise_tools(indexes)
@@ -31,8 +27,15 @@ def generate_generic_response(query):
     response = agent.chat(model.chatbot_prompt.format(query_str=query))
     return str(response)
 
-def set_document(file_path):
-    
+def set_document_chat_engine(file_path):
+    doc_chat_engine = model.pipeline.index_one_doc(file_path).as_chat_engine()
+    if len(document_chat_engine_cache) > 2:
+        document_chat_engine_cache.pop()
+    document_chat_engine_cache.append(doc_chat_engine)
+
+def chat_with_document(query):
+    doc_chat_engine = chat_with_document[0]
+    return doc_chat_engine.
 
 
 
