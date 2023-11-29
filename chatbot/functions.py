@@ -32,6 +32,7 @@ def generate_generic_response(query):
     return str(response)
 
 def set_document(file_path):
+    
 
 
 
@@ -56,6 +57,6 @@ def search_catalogue(query, top_k=10):
 
 
 if __name__ == "__main__":
-    generate_responses(
+    generate_generic_response(
         "How do I help my friend who is suffering from severe anxiety and depression?"
     )

@@ -5,7 +5,7 @@ from llama_index import (
     VectorStoreIndex,
     StorageContext,
     load_index_from_storage,
-    service_context,
+    global_service_context,
 )
 import llama_index
 from llama_index.embeddings import HuggingFaceEmbedding
@@ -108,7 +108,7 @@ class AugmentedIngestPipeline:
         for subject in self.vector_indexes:
             vector_tool = QueryEngineTool.from_defaults(
                 query_engine=self.vector_indexes[subject].as_query_engine(
-                    similarity_top_k=3,
+                    similarity_top_k=2,
                     node_postprocessors=[
                         MetadataReplacementPostProcessor(target_metadata_key="window")
                     ],
@@ -129,7 +129,7 @@ class AugmentedIngestPipeline:
             )
         return self.query_engines
 
-    def search_ogi(
+    def search_one_giant_index(
         self,
         query,
         top_k=10,
@@ -142,21 +142,30 @@ class AugmentedIngestPipeline:
         answers = retr.retrieve(query)
         if replace_with_meta:
             return list(set(map(lambda x: x.metadata[metadata_key], answers)))
+        else:
+            return list(map(lambda x: x.get_content(metadata_mode=MetadataMode.LLM), answers))
 
-    
+    def ingest_one_file(self, file_path: str, service_context: ServiceContext):
+        doc = (
+            SimpleDirectoryReader(
+                input_files=[file_path], filename_as_id=True
+            ).load_data(),
+        )
+        nodes = self.node_parser.get_nodes_from_documents(doc, show_progress=debug)
+        for node in nodes:
+            node_embedding = self.service_ctx.embed_model.get_text_embedding(
+                node.get_content(metadata_mode=MetadataMode.ALL)
+            )
+            node.embedding = node_embedding
 
-
-def ingest_one_file(file_path):
-    index = VectorStoreIndex.from_documents(
-        SimpleDirectoryReader(input_dir=file_path, filename_as_id=True).load_data(),
-        storage_context=StorageContext.from_defaults(
-            persist_dir=r"vectorstores/{0}".format(file_path.partition(".")[0])
-        ),
-        show_progress=True,
-    )
-    return index
-
-
+        index = VectorStoreIndex(
+            nodes = nodes,
+            storage_context=StorageContext.from_defaults(
+                persist_dir=r"vectorstores/{0}".format(file_path.partition(".")[0])
+            ),
+            show_progress=True,
+        )
+        return index
 
 
 if __name__ == "__main__":
@@ -169,5 +178,5 @@ if __name__ == "__main__":
         ),
     )
     pipe.run_pipeline()
-    pipe.search_ogi("depr")
+    pipe.search_one_giant_index("depr")
     default_server.stop()
