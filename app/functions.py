@@ -5,7 +5,7 @@ import os
 timestr = time.strftime("%Y%m%d-%H%M%S")
 from fastapi import FastAPI, File,UploadFile
 import uvicorn
-from chatbot import functions
+from chatbot import functions as ai_functions
 
 def serve_book(filepath: str):
     try:
@@ -28,8 +28,8 @@ def reading():
 
 @app.get("/filepath")
 def get_file_path(file_name):
-        file_path = os.path.abspath(file_name)  # Join the directory and file name
-        return file_path
+    file_path = os.path.abspath(file_name)  # Join the directory and file name
+    return file_path
 
 
 
@@ -41,11 +41,11 @@ def up_and_down(text: str, file: UploadFile = File(...)):
         raise HTTPException(400, detail=f"Invalid document type: {file_path}")
     else:
         data = file.file.read()
-        new_fileName = "{}_{}.pdf".format(os.path.splitext(file.filename)[0],timestr)
+        new_fileName = "{}_{}.pdf".format(os.path.splitext(str(file.filename))[0],timestr)
         save_file_path = os.path.join(upload_dir,new_fileName)
         with open(save_file_path, "wb") as f:
             f.write(data)
-        functions.set_document_chat_engine(file_path)
+        ai_functions.set_document_chat_engine(file_path)
         return FileResponse(path=save_file_path,media_type="application/octet-stream",filename=new_fileName), text,file_path
     
 
