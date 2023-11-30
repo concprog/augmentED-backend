@@ -19,7 +19,6 @@ agent = model.create_chat_agent(llm=model.load_llm(MODEL_PATH), tools=tools, fro
 
 def search_passages(passage, top_k=3):
     return model.search_for_para(passage, top_k=top_k)
-    
 
 # Responses
 def generate_generic_response(query):
