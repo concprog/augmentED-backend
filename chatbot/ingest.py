@@ -1,3 +1,4 @@
+from importlib import metadata
 from pathlib import WindowsPath
 from re import sub
 from llama_index import (
@@ -8,15 +9,8 @@ from llama_index import (
     global_service_context,
 )
 import llama_index
-from llama_index import query_engine
 from llama_index.embeddings import HuggingFaceEmbedding
-from llama_index.embeddings.base import similarity
 from llama_index.schema import TextNode, MetadataMode
-from llama_index.retrievers import BaseRetriever
-from llama_index.query_engine import (
-    ToolRetrieverRouterQueryEngine,
-    RetrieverQueryEngine,
-)
 from llama_index.vector_stores import MilvusVectorStore, SupabaseVectorStore
 from llama_index.readers import SimpleDirectoryReader
 from llama_index.node_parser import SentenceWindowNodeParser, SentenceSplitter, SimpleNodeParser
@@ -39,7 +33,7 @@ import os
 from typing import List, Dict, Any, Optional
 
 
-from common import DATA_PATH, EMBEDDING_DIM, EMBEDDING_MODEL, subjects, PathSep, debug
+from common import DATA_PATH, EMBEDDING_DIM, EMBEDDING_MODEL, path_leaf, subjects, PathSep, debug
 
 
 class AugmentedIngestPipeline:
@@ -144,7 +138,7 @@ class SimpleIngestPipeline:
         self.service_ctx = service_context
         self.embed_model = self.service_ctx.embed_model
         self.vector_indexes = {}
-        self.metadata_fn = lambda x: {"title": x.replace("_", " ")}
+        self.metadata_fn = lambda x: {"title": path_leaf(x)}
         # self.node_parser = SentenceWindowNodeParser.from_defaults(
         #     sentence_splitter=SentenceSplitter.from_defaults(chunk_size=512).split_text,
         #     window_size=3,
@@ -228,10 +222,11 @@ class SimpleIngestPipeline:
             self._insert_into_vectorstore(
                 subject="OGI", nodes=self.one_giant_index_nodes, create=self.create
             )
+
         else:
             for subject in subjects:
-                self.vector_indexes[subject] = self._load_vectorstore(subject)
-            self.vector_indexes["OGI"] = self._load_vectorstore("OGI")
+                self._load_vectorstore(subject)
+            self._load_vectorstore("OGI")
 
         self.one_giant_index = self.vector_indexes["OGI"]
 
@@ -241,7 +236,7 @@ if __name__ == "__main__":
         data_dir_path=DATA_PATH,
         service_context=ServiceContext.from_defaults(
             llm=None, embed_model=HuggingFaceEmbedding(EMBEDDING_MODEL)
-        ),
+        ),create=True
     )
     pipe.run_pipeline()
-    print(pipe.one_giant_index.as_retriever().retrieve("depression"))
+    print(pipe.one_giant_index.as_retriever().retrieve("depression")[0].get_content(metadata_mode=MetadataMode.LLM))

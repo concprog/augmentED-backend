@@ -166,7 +166,7 @@ g_service_ctx = ServiceContext.from_defaults(
 everything_pipeline = ingest.AugmentedIngestPipeline(data_dir_path=DATA_PATH, service_context=g_service_ctx)
 everything_pipeline.run_pipeline()
 
-one_doc_pipeline = ingest.AugmentedIngestPipeline(data_dir_path=DATA_PATH)
+one_doc_pipeline = ingest.SimpleIngestPipeline(data_dir_path=DATA_PATH, service_context=g_service_ctx)
 
 
 # pipeline fn.s 

@@ -47,6 +47,10 @@ def get_subject_data_path(subject_str: str) -> Optional[str]:
 
 subjects = get_subjects_from_dirs()
 
+# file commons
+def path_leaf(path):
+    head, tail = os.path.split(path)
+    return tail or os.path.basename(head)
 
 if __name__ == "__main__":
     print(MODEL_PATH)
