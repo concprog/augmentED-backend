@@ -1,27 +1,34 @@
 
 
 from fastapi import APIRouter
-from fastapi import UploadFile
+
+from fastapi import HTTPException
+from fastapi import UploadFile, File
+from fastapi.responses import FileResponse
+
+import os
+from app import functions
 
 
-from app import models, functions
-
-
-from chatbot.functions import generate_generic_response, generate_openai_from_response, search_catalogue
-
+from chatbot import functions as ai_functions
 
 router = APIRouter()
 
 DATA_PATH="data/"
 
 @router.post("/uploadbook/")
-async def create_upload_file(file: UploadFile | None = None, subject: str | None = None):
-    if not file:
-        return {"message": "No upload file sent"}
+def up_and_down(text: str, file: UploadFile = File(...)):
+    file_path = functions.get_file_path(file.filename)
+    if file.content_type != "application/pdf":
+        raise HTTPException(400, detail=f"Invalid document type: {file_path}")
     else:
-        book_content = await file.read()
-        # TODO add code to save it in sql table
-        return {"filename": file.filename}
+        data = file.file.read()
+        new_fileName = "{}_{}.pdf".format(os.path.splitext(str(file.filename))[0],functions.timestr)
+        save_file_path = os.path.join(DATA_PATH,new_fileName)
+        with open(save_file_path, "wb") as f:
+            f.write(data)
+        ai_functions.set_document_chat_engine(file_path)
+        return FileResponse(path=save_file_path,media_type="application/octet-stream",filename=new_fileName), text,file_path
 
 # Psuedocode - Replace with working example
 @router.post("/getbook/")
@@ -34,8 +41,8 @@ async def read_conversation(
 ):
     # TODO Add subject/model checking and redirection
 
-    response = generate_generic_response(query=query)
-    return generate_openai_from_response(response)
+    response = ai_functions.generate_generic_response(query=query)
+    return ai_functions.generate_openai_from_response(response)
 
 router.post("/para_similarity_search/")
 async def search_similar_para(
@@ -43,5 +50,5 @@ async def search_similar_para(
 ):
     # TODO Add subject/model checking and redirection
 
-    response = search_catalogue(query=para, top_k=4)
-    return generate_openai_from_response(response)
+    response = ai_functions.search_catalogue(query=para, top_k=4)
+    return ai_functions.generate_openai_from_response(response)

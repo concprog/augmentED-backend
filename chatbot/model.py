@@ -12,6 +12,7 @@ from llama_index import (
     VectorStoreIndex,
     set_global_service_context,
 )
+from llama_index.retrievers import BM25Retriever
 from llama_index.schema import TextNode, NodeWithScore
 from llama_index.embeddings import HuggingFaceEmbedding
 
@@ -72,6 +73,14 @@ def load_llm(model_path=MODEL_PATH, colab=False):
     return llm
 
 
+def search_doc_metadata(docs: List[Document], query: str, metadata_key: str, top_k=10,keep_duplicates=False):
+    meta_nodes = list(map(lambda x: TextNode(text=x.metadata[metadata_key]), docs))
+    if not keep_duplicates:
+        meta_nodes = list(set(meta_nodes))
+    retr = BM25Retriever.from_defaults(nodes=meta_nodes,similarity_top_k=top_k)
+    answers = retr.retrieve(query)
+    return list(set(map(lambda x: x.get_content(metadata_mode="all"), answers)))
+
 # Tools and Agent defn.s and helpers
 
 
@@ -107,9 +116,6 @@ def get_subject_from_query(agent, query, subjects=subjects):
 
 
 # Search (vector, bm25, ensemble)
-def search_for_para(para: str, top_k: int):
-    answers = pipeline.search_one_giant_index(para, top_k=top_k, metadata_key="window")
-    return answers
 
 
 # Personalized helper functions
@@ -157,8 +163,21 @@ g_service_ctx = ServiceContext.from_defaults(
     llm=llm, embed_model=embeddings, chunk_size=512
 )
 
-pipeline = ingest.AugmentedIngestPipeline(data_dir_path=DATA_PATH, service_context=g_service_ctx)
-pipeline.run_pipeline()
+everything_pipeline = ingest.AugmentedIngestPipeline(data_dir_path=DATA_PATH, service_context=g_service_ctx)
+everything_pipeline.run_pipeline()
+
+one_doc_pipeline = ingest.AugmentedIngestPipeline(data_dir_path=DATA_PATH)
+
+
+# pipeline fn.s 
+
+def search_titles(title: str, top_k: int) -> List[str]:
+    results = search_doc_metadata(everything_pipeline.all_docs, title, metadata_key="title", top_k=top_k)
+    return results
+
+def search_for_para(para: str, top_k: int):
+    answers = everything_pipeline.search_one_giant_index(para, top_k=top_k, metadata_key="window")
+    return answers
 
 if __name__ == "__main__":
     pass
