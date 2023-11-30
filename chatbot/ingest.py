@@ -33,12 +33,12 @@ import os
 from typing import List, Dict, Any, Optional
 
 
-from common import DATA_PATH, EMBEDDING_DIM, EMBEDDING_MODEL, path_leaf, subjects, PathSep, debug
+from common import DATA_PATH, EMBEDDING_DIM, EMBEDDING_MODEL, SIMILARITY_SEARCH_THRESHOLD, path_leaf, subjects, PathSep, debug
 
 
 class AugmentedIngestPipeline:
     def __init__(
-        self, data_dir_path: str, service_context: ServiceContext, create=True
+        self, data_dir_path: str, service_context: ServiceContext,
     ) -> None:
         self.data_dir = data_dir_path
         self.service_ctx = service_context
@@ -46,13 +46,12 @@ class AugmentedIngestPipeline:
         self.vector_indexes = {}
         self.metadata_fn = lambda x: {"title": x.replace("_", " ")}
         self.node_parser = SentenceWindowNodeParser.from_defaults(
-            sentence_splitter=SentenceSplitter.from_defaults(chunk_size=512).split_text,
             window_size=3,
             window_metadata_key="window",
             original_text_metadata_key="original_text",
             include_metadata=True,
         )
-        self.create = create
+        self.create = False
 
     def _load_data(self, path):
         docs = SimpleDirectoryReader(
@@ -82,33 +81,73 @@ class AugmentedIngestPipeline:
             storage_context=storage_ctx,
         )
 
-    def _get_subject_query_engine(self, subject) -> Dict:
+    def _load_vectorstore(self, subject):
+        collection_name = f"augmentED_{subject}"
+        vector_store = MilvusVectorStore(
+            dim=EMBEDDING_DIM,
+            host="127.0.0.1",
+            port=default_server.listen_port,
+            collection_name=collection_name,
+            overwrite=False
+        )
+
+        storage_ctx = StorageContext.from_defaults(vector_store=vector_store)
+
+        self.vector_indexes[subject] = VectorStoreIndex.from_vector_store(
+            vector_store=vector_store,
+            service_context=self.service_ctx,
+            storage_context=storage_ctx,
+        )
+
+    def _get_subject_query_engine(self, subject):
         query_engine = self.vector_indexes[subject].as_query_engine(
             similarity_top_k=3,
             node_postprocessors=[
+                SimilarityPostprocessor(similarity_cutoff=SIMILARITY_SEARCH_THRESHOLD),
                 MetadataReplacementPostProcessor(target_metadata_key="window")
             ],
         )
         return query_engine
 
-    def run_pipeline(self):
-        self.one_giant_index_nodes = []
-        self.all_docs = []
-        for subject in subjects:
-            path = self.data_dir + PathSep + subjects[subject]
-
-            docs = self._load_data(path)
-            nodes = self._make_nodes(docs)
-            self._insert_into_vectorstore(subject=subject, nodes=nodes)
-
-            self.one_giant_index_nodes.extend(nodes)
-            self.all_docs.extend(docs)
-
-        self._insert_into_vectorstore(
-            subject="OGI", nodes=self.one_giant_index_nodes, create=True
+    def _get_subject_chat_engine(self, subject):
+        query_engine = self.vector_indexes[subject].as_chat_engine(
+            mode="context",
+            similarity_top_k=2,
+            node_postprocessors=[
+                SimilarityPostprocessor(similarity_cutoff=SIMILARITY_SEARCH_THRESHOLD),
+                MetadataReplacementPostProcessor(target_metadata_key="window")
+            ],
         )
-        self.one_giant_index = self.vector_indexes["OGI"]
+        return query_engine
 
+
+    def run_pipeline(self, create=False):
+        self.create = create
+        if self.create:
+            self.one_giant_index_nodes = []
+            self.all_docs = []
+            for subject in subjects:
+                path = self.data_dir + PathSep + subjects[subject]
+
+                docs = self._load_data(path)
+                nodes = self._make_nodes(docs)
+                self._insert_into_vectorstore(subject=subject, nodes=nodes)
+
+                self.one_giant_index_nodes.extend(nodes)
+                self.all_docs.extend(docs)
+
+            self._insert_into_vectorstore(
+                subject="OneGiantIndex", nodes=self.one_giant_index_nodes, create=self.create
+            )
+
+        else:
+            for subject in subjects:
+                self._load_vectorstore(subject)
+            self._load_vectorstore("OneGiantIndex")
+
+        self.one_giant_index = self.vector_indexes["OneGiantIndex"]
+        self.query_everything = self._get_subject_query_engine("OneGiantIndex")
+    
     def search_one_giant_index(
         self,
         query,
@@ -127,8 +166,15 @@ class AugmentedIngestPipeline:
                 map(lambda x: x.get_content(metadata_mode=MetadataMode.LLM), answers)
             )
 
-    def ogi_query_engine(self):
-        return self._get_subject_query_engine("OGI")
+    def query_one_file(self,file_path):
+        docs = SimpleDirectoryReader(
+            input_files=[file_path], file_metadata=self.metadata_fn, filename_as_id=True
+        ).load_data()
+        nodes = self._make_nodes(docs)
+        self._insert_into_vectorstore("UserUploadedDocument", nodes)
+        self._insert_into_vectorstore("OneGiantIndex", nodes)
+        return self._get_subject_query_engine("UserUploadedDocument")
+    
 
 class SimpleIngestPipeline:
     def __init__(
@@ -139,14 +185,14 @@ class SimpleIngestPipeline:
         self.embed_model = self.service_ctx.embed_model
         self.vector_indexes = {}
         self.metadata_fn = lambda x: {"title": path_leaf(x)}
-        # self.node_parser = SentenceWindowNodeParser.from_defaults(
-        #     sentence_splitter=SentenceSplitter.from_defaults(chunk_size=512).split_text,
-        #     window_size=3,
-        #     window_metadata_key="window",
-        #     original_text_metadata_key="original_text",
-        #     include_metadata=True,
-        # )
-        self.node_parser = SimpleNodeParser(chunk_size=512)
+        self.node_parser = SentenceWindowNodeParser.from_defaults(
+            sentence_splitter=SentenceSplitter.from_defaults(chunk_size=512).split_text,
+            window_size=3,
+            window_metadata_key="window",
+            original_text_metadata_key="original_text",
+            include_metadata=True,
+        )
+        # self.node_parser = SimpleNodeParser(chunk_size=512)
         self.create = create
 
     def _load_data(self, path):
@@ -220,23 +266,22 @@ class SimpleIngestPipeline:
                 self.all_docs.extend(docs)
 
             self._insert_into_vectorstore(
-                subject="OGI", nodes=self.one_giant_index_nodes, create=self.create
+                subject="OneGiantIndex", nodes=self.one_giant_index_nodes, create=self.create
             )
 
         else:
             for subject in subjects:
                 self._load_vectorstore(subject)
-            self._load_vectorstore("OGI")
+            self._load_vectorstore("OneGiantIndex")
 
-        self.one_giant_index = self.vector_indexes["OGI"]
+        self.one_giant_index = self.vector_indexes["OneGiantIndex"]
 
 
 if __name__ == "__main__":
-    pipe = SimpleIngestPipeline(
+    pipe = AugmentedIngestPipeline(
         data_dir_path=DATA_PATH,
         service_context=ServiceContext.from_defaults(
             llm=None, embed_model=HuggingFaceEmbedding(EMBEDDING_MODEL)
-        ),create=True
+        ),
     )
-    pipe.run_pipeline()
-    print(pipe.one_giant_index.as_retriever().retrieve("depression")[0].get_content(metadata_mode=MetadataMode.LLM))
+    pipe.run_pipeline(create=True)

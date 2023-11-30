@@ -2,16 +2,19 @@ from dataclasses import dataclass, field
 from typing import Generator, List, Set, Dict, Optional, Tuple, Union, Any
 from os.path import sep as PathSep
 
+from transformers import AutoTokenizer
+
 import llama_index
 from llama_index import (
-    SimpleDirectoryReader,
+    PromptTemplate,
     Document,
     Prompt,
     ServiceContext,
-    StorageContext,
-    VectorStoreIndex,
     set_global_service_context,
+    set_global_tokenizer
 )
+
+from llama_index.response_synthesizers import TreeSummarize
 from llama_index.retrievers import BM25Retriever
 from llama_index.schema import TextNode, NodeWithScore
 from llama_index.embeddings import HuggingFaceEmbedding
@@ -24,6 +27,7 @@ from llama_index.tools.query_engine import QueryEngineTool
 from llama_index.agent import ReActAgent
 
 
+
 import ingest
 
 from common import *
@@ -33,7 +37,7 @@ from common import *
 ###########
 # Prompts #
 ###########
-chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer marks are deducted, hence answer carefully and leave the answer blank and caveat when you are not sure of your solution. \nQuestion: {query_str}"
+chatbot_instruction = "Solve the problems given below to the best of your ability. Remember, for each wrong answer, you will be penalized - hence answer carefully and leave the answer blank or caveat when you are not sure of your solution. \nQuestion: {query_str}"
 chatbot_prompt = Prompt(chatbot_instruction)
 
 
@@ -60,44 +64,35 @@ def messages_to_prompt(messages):
 def load_llm(model_path=MODEL_PATH, colab=False):
     # Uncomment the block below for using with local llm
 
+
+    set_global_tokenizer(
+        AutoTokenizer.from_pretrained("HuggingFaceH4/zephyr-7b-beta").encode
+    )
+
     llm = LlamaCPP(
         model_path=model_path,
-        max_new_tokens=3900,
+        context_window=5120,
+        max_new_tokens=1536,
         temperature=0.5,
-        generate_kwargs={},
-        model_kwargs={"n_gpu_layers": 18 if not colab else 64},
+        model_kwargs={"n_gpu_layers": 24 if not colab else 64},
         messages_to_prompt=messages_to_prompt,
-        completion_to_prompt=completion_to_prompt,
         verbose=True,
     )
     return llm
 
 
-def search_doc_metadata(docs: List[Document], query: str, metadata_key: str, top_k=10,keep_duplicates=False):
-    meta_nodes = list(map(lambda x: TextNode(text=x.metadata[metadata_key]), docs))
-    if not keep_duplicates:
-        meta_nodes = list(set(meta_nodes))
-    retr = BM25Retriever.from_defaults(nodes=meta_nodes,similarity_top_k=top_k)
-    answers = retr.retrieve(query)
-    return list(set(map(lambda x: x.get_content(metadata_mode="all"), answers)))
-
-# Tools and Agent defn.s and helpers
-
-
-def subject_vector_tool(query_engine, subject):
-    vector_tool = QueryEngineTool.from_defaults(
-        query_engine=query_engine,
-        description=f"Useful for retrieving specific context for anything related to the {subject}",
-    )
-    return vector_tool
-
-
-def response_agent(llm, tools, debug=False):
-    agent = ReActAgent.from_tools(tools=tools, llm=llm, verbose=debug)
-    return agent
 
 
 # LLM task helpers
+
+def build_input_prompt(message, system_prompt):
+    """
+    Constructs the input prompt string from the chatbot interactions and the current message.
+    """
+    input_prompt = "<|system|>\n" + system_prompt + "</s>\n<|user|>\n"
+    input_prompt = input_prompt + str(message) + "</s>\n<|assistant|>"
+    return input_prompt
+
 def get_subject_from_query(agent, query, subjects=subjects):
     fmted_subjects = ", ".join(list(subjects.keys()))
     generate_responses = lambda x: str(agent.chat(x))
@@ -117,33 +112,35 @@ def get_subject_from_query(agent, query, subjects=subjects):
 
 # Search (vector, bm25, ensemble)
 
+def search_doc_metadata(docs: List[Document], query: str, metadata_key: str, top_k=10,keep_duplicates=False):
+    meta_nodes = list(map(lambda x: TextNode(text=x.metadata[metadata_key]), docs))
+    if not keep_duplicates:
+        meta_nodes = list(set(meta_nodes))
+    retr = BM25Retriever.from_defaults(nodes=meta_nodes,similarity_top_k=top_k)
+    answers = retr.retrieve(query)
+    return list(set(map(lambda x: x.get_content(metadata_mode="all"), answers)))
+
+# Tools and Agent defn.s and helpers
+
+def subject_vector_tool(query_engine, subject):
+    vector_tool = QueryEngineTool.from_defaults(
+        query_engine=query_engine,
+        description=f"Useful for retrieving specific context for anything related to the {subject}",
+    )
+    return vector_tool
+
+
+def response_agent(llm, tools, debug=False):
+    agent = ReActAgent.from_tools(tools=tools, llm=llm, verbose=debug)
+    return agent
 
 # Personalized helper functions
-def create_subjectwise_indexes():
-    indexes = {}
-    for subject in subjects.keys():
-        # Placeholder vector store to be replaced by milvus lite
-        indexes[subject] = VectorStoreIndex.from_documents(
-            SimpleDirectoryReader(
-                input_dir=get_subject_data_path(subject), filename_as_id=True
-            ).load_data(),
-            storage_context=StorageContext.from_defaults(
-                persist_dir=r"vectorstores/{0}".format(subject)
-            ),
-            show_progress=True,
-        )
 
-    return indexes
-
-
-def create_subjectwise_tools(indexes):
-    tools = {}
+def create_tools(indexes):
+    tools = []
     for subject in indexes:
-        tools[subject] = subject_vector_tool(
-            indexes[subject].as_query_engine(), subject
-        )
+        tools.append(subject_vector_tool(indexes[subject], subject))
     return tools
-
 
 def create_chat_agent(llm=load_llm(MODEL_PATH), tools=[], from_dict=False):
     tools = list(tools.values) if from_dict else tools
@@ -154,30 +151,59 @@ def chat_with_agent(agent: ReActAgent, query):
     chat_response = agent.chat(chatbot_prompt.format(query_str=query))
     return str(chat_response)
 
+def summarize_text(text, paras=["<no context present>"]):
+    
+    custom_prompt_tmpl = (
+        "<|system|>\n"
+        "Summarize the provided book or paragraph, emphasizing key concepts and minimizing unnecessary details. Be concise and provide the essence of the content in the least space possible in points.</s>\n"
+        "<|user|>\n"
+        "Do not summarize the following context, instead use them to decide what topics are important and which ones are unnecessary: "
+        "{context_str}"
+        "Summarize the following paragraphs only, concisely: "
+        "{query_str} </s>"
+        "<|assistant|>"
+    )
+    custom_prompt = PromptTemplate(custom_prompt_tmpl)    
+    summarizer = TreeSummarize(verbose=True, summary_template=custom_prompt)
+    response = summarizer.get_response(f"{text}",paras)  # Empty query
+    return (str(response))
 
 
 llm = load_llm(model_path=MODEL_PATH)
 embeddings = HuggingFaceEmbedding(model_name=EMBEDDING_MODEL)
 
 g_service_ctx = ServiceContext.from_defaults(
-    llm=llm, embed_model=embeddings, chunk_size=512
+    llm=llm, embed_model=embeddings,
 )
 
 everything_pipeline = ingest.AugmentedIngestPipeline(data_dir_path=DATA_PATH, service_context=g_service_ctx)
 everything_pipeline.run_pipeline()
 
-one_doc_pipeline = ingest.SimpleIngestPipeline(data_dir_path=DATA_PATH, service_context=g_service_ctx)
 
 
 # pipeline fn.s 
 
-def search_titles(title: str, top_k: int) -> List[str]:
-    results = search_doc_metadata(everything_pipeline.all_docs, title, metadata_key="title", top_k=top_k)
+def search_for_title(title: str, top_k: int) -> List[str]:
+    results = everything_pipeline.search_one_giant_index(title, top_k=top_k, metadata_key="title")
     return results
 
-def search_for_para(para: str, top_k: int):
+def search_for_paras(para: str, top_k: int):
     answers = everything_pipeline.search_one_giant_index(para, top_k=top_k, metadata_key="window")
     return answers
 
+def augmented_summarize(text: str, top_k:int = 2):
+    paras = search_for_paras(text, top_k)
+    summary = summarize_text(text, paras)
+    return summary
+
+##
+## externally accessible fn.s and variables
+##
+
+tools = create_tools(everything_pipeline.vector_indexes)
+agent = create_chat_agent(llm=llm, tools=tools)
+
 if __name__ == "__main__":
-    pass
+    set_global_service_context(g_service_ctx)
+    print(augmented_summarize("Who is rogers?"))
+    # <|user|>How do I fix my friend's crippling anxiety and depression?\nYou know that {context_str}</s><|assistant|>
