@@ -28,9 +28,9 @@ from llama_index.agent import ReActAgent
 
 
 
-import ingest
+from chatbot import ingest
 
-from common import *
+from chatbot.common import *
 
 # TODO Do prompt engineering to fix the instruction and other stuff
 

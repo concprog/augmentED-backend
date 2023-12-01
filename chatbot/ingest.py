@@ -11,29 +11,21 @@ from llama_index import (
 import llama_index
 from llama_index.embeddings import HuggingFaceEmbedding
 from llama_index.schema import TextNode, MetadataMode
-from llama_index.vector_stores import MilvusVectorStore, SupabaseVectorStore
+from llama_index.vector_stores import MilvusVectorStore
 from llama_index.readers import SimpleDirectoryReader
 from llama_index.node_parser import SentenceWindowNodeParser, SentenceSplitter, SimpleNodeParser
 from llama_index.postprocessor import (
     SimilarityPostprocessor,
     MetadataReplacementPostProcessor,
 )
-from llama_index.tools.query_engine import QueryEngineTool
-from llama_index.extractors import (
-    SummaryExtractor,
-    QuestionsAnsweredExtractor,
-    TitleExtractor,
-    KeywordExtractor,
-    EntityExtractor,
-    BaseExtractor,
-)
+
 from milvus import default_server
 
 import os
 from typing import List, Dict, Any, Optional
 
 
-from common import DATA_PATH, EMBEDDING_DIM, EMBEDDING_MODEL, SIMILARITY_SEARCH_THRESHOLD, path_leaf, subjects, PathSep, debug
+from chatbot.common import DATA_PATH, EMBEDDING_DIM, EMBEDDING_MODEL, SIMILARITY_SEARCH_THRESHOLD, path_leaf, subjects, PathSep, debug
 
 
 class AugmentedIngestPipeline:
@@ -185,14 +177,7 @@ class SimpleIngestPipeline:
         self.embed_model = self.service_ctx.embed_model
         self.vector_indexes = {}
         self.metadata_fn = lambda x: {"title": path_leaf(x)}
-        self.node_parser = SentenceWindowNodeParser.from_defaults(
-            sentence_splitter=SentenceSplitter.from_defaults(chunk_size=512).split_text,
-            window_size=3,
-            window_metadata_key="window",
-            original_text_metadata_key="original_text",
-            include_metadata=True,
-        )
-        # self.node_parser = SimpleNodeParser(chunk_size=512)
+        self.node_parser = SimpleNodeParser(chunk_size=512)
         self.create = create
 
     def _load_data(self, path):

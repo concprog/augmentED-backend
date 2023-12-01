@@ -1,8 +1,6 @@
-from hashlib import file_digest
 from llama_index import set_global_service_context
 
-import model
-from common import *
+from chatbot import model
 
 
 set_global_service_context(model.g_service_ctx)
@@ -13,8 +11,11 @@ document_chat_engine_cache = []
 
 # Accessible fn.s
 
+# Create/Recreate
 
-
+def recreate_indexes(passwd: str):
+    if passwd == "recreate":
+        model.everything_pipeline.run_pipeline(create=True)
 
 # Responses
 def generate_generic_response(query):
