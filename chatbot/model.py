@@ -74,7 +74,7 @@ def load_llm(model_path=MODEL_PATH, colab=False):
         context_window=5120,
         max_new_tokens=1536,
         temperature=0.5,
-        model_kwargs={"n_gpu_layers": 24 if not colab else 64},
+        model_kwargs={"n_gpu_layers": 18 if not colab else 64},
         messages_to_prompt=messages_to_prompt,
         verbose=True,
     )
